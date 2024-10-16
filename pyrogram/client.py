@@ -44,7 +44,7 @@ from pyrogram.errors import CDNFileHashMismatch
 from pyrogram.errors import (
     SessionPasswordNeeded,
     VolumeLocNotFound, ChannelPrivate,
-    BadRequest
+    BadRequest, AuthBytesInvalid
 )
 from pyrogram.handlers.handler import Handler
 from pyrogram.methods import Methods
@@ -510,10 +510,18 @@ class Client(Methods):
                 peer_id = -peer.id
                 access_hash = 0
                 peer_type = "group"
-            elif isinstance(peer, (raw.types.Channel, raw.types.ChannelForbidden)):
+            elif isinstance(peer, raw.types.Channel):
                 peer_id = utils.get_channel_id(peer.id)
                 access_hash = peer.access_hash
-                username = (getattr(peer, "username", None) or "").lower() or None
+                username = (
+                    peer.username.lower() if peer.username
+                    else peer.usernames[0].username.lower() if peer.usernames
+                    else None
+                )
+                peer_type = "channel" if peer.broadcast else "supergroup"
+            elif isinstance(peer, raw.types.ChannelForbidden):
+                peer_id = utils.get_channel_id(peer.id)
+                access_hash = peer.access_hash
                 peer_type = "channel" if peer.broadcast else "supergroup"
             else:
                 continue
@@ -854,31 +862,40 @@ class Client(Methods):
 
             dc_id = file_id.dc_id
 
-            session = Session(
-                self, dc_id,
-                await Auth(self, dc_id, await self.storage.test_mode()).create()
-                if dc_id != await self.storage.dc_id()
-                else await self.storage.auth_key(),
-                await self.storage.test_mode(),
-                is_media=True
-            )
-
             try:
-                await session.start()
-
-                if dc_id != await self.storage.dc_id():
-                    exported_auth = await self.invoke(
-                        raw.functions.auth.ExportAuthorization(
-                            dc_id=dc_id
-                        )
+                session = self.media_sessions.get(dc_id)
+                if not session:
+                    session = self.media_sessions[dc_id] = Session(
+                        self, dc_id,
+                        await Auth(self, dc_id, await self.storage.test_mode()).create()
+                        if dc_id != await self.storage.dc_id()
+                        else await self.storage.auth_key(),
+                        await self.storage.test_mode(),
+                        is_media=True
                     )
+                    await session.start()
 
-                    await session.invoke(
-                        raw.functions.auth.ImportAuthorization(
-                            id=exported_auth.id,
-                            bytes=exported_auth.bytes
-                        )
-                    )
+                    if dc_id != await self.storage.dc_id():
+                        for _ in range(3):
+                            exported_auth = await self.invoke(
+                                raw.functions.auth.ExportAuthorization(
+                                    dc_id=dc_id
+                                )
+                            )
+
+                            try:
+                                await session.invoke(
+                                    raw.functions.auth.ImportAuthorization(
+                                        id=exported_auth.id,
+                                        bytes=exported_auth.bytes
+                                    )
+                                )
+                            except AuthBytesInvalid:
+                                continue
+                            else:
+                                break
+                        else:
+                            raise AuthBytesInvalid
 
                 r = await session.invoke(
                     raw.functions.upload.GetFile(
@@ -1011,8 +1028,6 @@ class Client(Methods):
                 raise
             except Exception as e:
                 log.exception(e)
-            finally:
-                await session.stop()
 
     def guess_mime_type(self, filename: str) -> Optional[str]:
         return self.mimetypes.guess_type(filename)[0]

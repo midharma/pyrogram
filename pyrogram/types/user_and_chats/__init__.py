@@ -32,22 +32,30 @@ from .chat_privileges import ChatPrivileges
 from .chat_reactions import ChatReactions
 from .dialog import Dialog
 from .emoji_status import EmojiStatus
+from .folder import Folder
 from .invite_link_importer import InviteLinkImporter
 from .restriction import Restriction
+from .peer_channel import PeerChannel
+from .peer_user import PeerUser
 from .user import User
+from .username import Username
 from .video_chat_ended import VideoChatEnded
 from .video_chat_members_invited import VideoChatMembersInvited
 from .video_chat_scheduled import VideoChatScheduled
 from .video_chat_started import VideoChatStarted
-
+from .birthday import Birthday
 __all__ = [
     "Chat",
     "ChatMember",
     "ChatPermissions",
     "ChatPhoto",
     "ChatPreview",
+    "Birthday",
     "Dialog",
+    "PeerChannel",
+    "PeerUser",
     "User",
+    "Username",
     "Restriction",
     "ChatEvent",
     "ChatEventFilter",
@@ -63,5 +71,6 @@ __all__ = [
     "ChatPrivileges",
     "ChatJoiner",
     "EmojiStatus",
+    "Folder",
     "ChatReactions"
 ]
